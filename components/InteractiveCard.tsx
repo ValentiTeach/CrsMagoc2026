@@ -17,6 +17,7 @@ const InteractiveCard: React.FC = () => {
   // Tilt state
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
   const cardRef = useRef<HTMLDivElement>(null);
+  const isGeneratingRef = useRef(false); // Prevent double clicks
 
   const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
     if (!cardRef.current) return;
@@ -28,7 +29,7 @@ const InteractiveCard: React.FC = () => {
     const centerX = rect.width / 2;
     const centerY = rect.height / 2;
     
-    const rotateX = ((y - centerY) / centerY) * -10; // Invert for correct tilt feel
+    const rotateX = ((y - centerY) / centerY) * -10;
     const rotateY = ((x - centerX) / centerX) * 10;
 
     setTilt({ x: rotateX, y: rotateY });
@@ -39,38 +40,57 @@ const InteractiveCard: React.FC = () => {
   };
 
   const generate = async (theme: GreetingTheme) => {
+    // Prevent multiple simultaneous generations
+    if (isGeneratingRef.current) {
+      console.log('Already generating, please wait...');
+      return;
+    }
+
+    isGeneratingRef.current = true;
     setLoading(true);
-    // Add a small artificial delay for the "magic" feeling
-    const [text] = await Promise.all([
-      generateChristmasGreeting(theme),
-      new Promise(resolve => setTimeout(resolve, 800))
-    ]);
-    setGreeting(text);
-    setLoading(false);
+    
+    try {
+      const [text] = await Promise.all([
+        generateChristmasGreeting(theme),
+        new Promise(resolve => setTimeout(resolve, 800))
+      ]);
+      setGreeting(text);
+    } catch (error) {
+      console.error('Error generating greeting:', error);
+      setGreeting("У тихій зимовій ночі, коли сніг вкриває землю срібним килимом, нехай у вашому серці народиться світло. Бажаю миру, що глибший за океан, і радості, що яскравіша за першу зірку. Нехай це Різдво 2026 року стане початком найщасливішої сторінки вашого життя!");
+    } finally {
+      setLoading(false);
+      isGeneratingRef.current = false;
+    }
   };
 
   const handleOpen = async () => {
-    if (isOpen) return;
+    if (isOpen || isGeneratingRef.current) return;
     await generate(currentTheme);
     setIsOpen(true);
   };
 
   const handleThemeSelect = async (theme: GreetingTheme) => {
-      setCurrentTheme(theme);
-      await generate(theme);
+    if (isGeneratingRef.current) {
+      console.log('Please wait for current generation to complete');
+      return;
+    }
+    
+    setCurrentTheme(theme);
+    await generate(theme);
   };
 
   const handleReset = () => {
+    if (isGeneratingRef.current) return; // Don't reset while generating
+    
     setIsOpen(false);
     setTimeout(() => {
         setGreeting(null);
         setTilt({ x: 0, y: 0 });
+        setCurrentTheme('magic'); // Reset to default theme
     }, 500);
   };
 
-  // Calculate transforms
-  // When closed: just tilt
-  // When open: flip 180 + tilt (inverted X for backface natural feel)
   const transformStyle = isOpen 
     ? `rotateY(${180 + tilt.y * 0.5}deg) rotateX(${tilt.x * 0.5}deg)` 
     : `rotateY(${tilt.y}deg) rotateX(${tilt.x}deg)`;
@@ -81,30 +101,27 @@ const InteractiveCard: React.FC = () => {
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
     >
-      {/* Container that handles the flip and tilt */}
       <div 
         ref={cardRef}
-        className={`relative w-full transition-transform duration-1000 ease-out transform-style-3d cursor-pointer shadow-2xl rounded-xl`}
+        className={`relative w-full transition-transform duration-1000 ease-out transform-style-3d ${!isOpen ? 'cursor-pointer' : ''} shadow-2xl rounded-xl`}
         style={{ 
           transform: transformStyle,
           minHeight: '450px',
           transition: 'transform 0.1s ease-out, min-height 0.3s'
         }}
-        onClick={!isOpen ? handleOpen : undefined}
+        onClick={!isOpen && !isGeneratingRef.current ? handleOpen : undefined}
       >
         
         {/* FRONT OF CARD */}
         <div className="absolute inset-0 w-full h-full backface-hidden shadow-2xl rounded-xl overflow-hidden border-2 border-christmas-gold/30 group bg-slate-900">
           <div className="absolute inset-0 bg-gradient-to-br from-christmas-red to-slate-900"></div>
           
-          {/* Moving sheen effect */}
           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-200%] group-hover:animate-shimmer"></div>
           
           <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(255,255,255,0.5) 1px, transparent 0)', backgroundSize: '30px 30px' }}></div>
           
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8">
             <div className="transform transition-transform duration-500 group-hover:scale-110 group-hover:rotate-12">
-                {/* SVG Snowflake/Star Icon */}
                 <svg className="w-24 h-24 text-christmas-gold mb-6 drop-shadow-[0_0_25px_rgba(212,175,55,0.8)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 3v18m9-9H3m15.364 6.364l-12.728-12.728m12.728 0L9.272 19.272M12 7a5 5 0 110 10 5 5 0 010-10z" />
                 </svg>
@@ -117,14 +134,13 @@ const InteractiveCard: React.FC = () => {
               Натисніть для магії
             </p>
 
-             {loading && (
+             {loading && !isOpen && (
                 <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2">
                      <div className="w-8 h-8 border-4 border-christmas-gold border-t-transparent rounded-full animate-spin"></div>
                 </div>
              )}
           </div>
           
-          {/* Shiny border effect */}
           <div className="absolute inset-0 border-4 border-double border-christmas-gold/20 rounded-xl pointer-events-none"></div>
         </div>
 
@@ -151,7 +167,7 @@ const InteractiveCard: React.FC = () => {
                         </svg>
                     </div>
                     
-                    <div className="font-serif text-lg md:text-xl leading-relaxed text-slate-800 italic text-center px-2">
+                    <div className="font-serif text-lg md:text-xl leading-relaxed text-slate-800 italic text-center px-2 mb-6">
                       {greeting}
                     </div>
 
@@ -167,6 +183,7 @@ const InteractiveCard: React.FC = () => {
                                 className={`
                                     px-3 py-1.5 rounded-full text-xs font-sans uppercase tracking-wider transition-all
                                     flex items-center gap-1
+                                    ${loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
                                     ${currentTheme === t.id 
                                         ? 'bg-christmas-red text-white shadow-md scale-105' 
                                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}
@@ -179,7 +196,10 @@ const InteractiveCard: React.FC = () => {
                     
                     <button 
                         onClick={handleReset}
-                        className="px-8 py-2 border-b border-slate-300 text-slate-400 font-sans text-xs uppercase tracking-widest hover:text-christmas-red hover:border-christmas-red transition-colors"
+                        disabled={loading}
+                        className={`px-8 py-2 border-b border-slate-300 text-slate-400 font-sans text-xs uppercase tracking-widest transition-colors
+                            ${loading ? 'opacity-50 cursor-not-allowed' : 'hover:text-christmas-red hover:border-christmas-red cursor-pointer'}
+                        `}
                     >
                         Закрити
                     </button>
@@ -190,12 +210,10 @@ const InteractiveCard: React.FC = () => {
 
       </div>
       
-      {/* Helper CSS for 3D flip */}
       <style>{`
         .perspective-1000 { perspective: 1200px; }
         .transform-style-3d { transform-style: preserve-3d; }
         .backface-hidden { backface-visibility: hidden; }
-        /* Custom Scrollbar hide */
         .scrollbar-hide::-webkit-scrollbar {
             display: none;
         }
