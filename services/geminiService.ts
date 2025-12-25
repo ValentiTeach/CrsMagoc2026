@@ -1,6 +1,14 @@
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Vite використовує import.meta.env замість process.env
+// Змінні повинні починатися з VITE_
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+if (!apiKey) {
+  console.error("VITE_GEMINI_API_KEY is not set");
+}
+
+const ai = new GoogleGenAI({ apiKey: apiKey || "" });
 
 export type GreetingTheme = 'magic' | 'cozy' | 'hope' | 'spiritual';
 
@@ -13,6 +21,10 @@ const THEME_PROMPTS: Record<GreetingTheme, string> = {
 
 export const generateChristmasGreeting = async (theme: GreetingTheme = 'magic'): Promise<string> => {
   try {
+    if (!apiKey) {
+      throw new Error("API key is not configured");
+    }
+
     const model = 'gemini-3-flash-preview';
     const prompt = `
       Напиши красиве, глибоке та завершене привітання з Різдвом Христовим 2026 року українською мовою.
@@ -33,7 +45,7 @@ export const generateChristmasGreeting = async (theme: GreetingTheme = 'magic'):
       config: {
         temperature: 1.1,
         topP: 0.95,
-        maxOutputTokens: 1000, // Increased to ensure full response
+        maxOutputTokens: 1000,
       }
     });
 
